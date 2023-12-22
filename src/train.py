@@ -37,28 +37,29 @@ import matplotlib.pyplot as plt
 import math
 from tqdm import tqdm
 from src.logger import create_logger
-logger = create_logger()
+
 torch.cuda.is_available()
 
 
+run_id = 3
 train_dir = "data/train"
 test_dir = "data/test"
 
 train_csv = "data/spam_train.csv"
 test_csv = "data/spam_test.csv"
 
-models_path = "models/runid_2"
+models_path = f"models/{run_id}"
+logfile = f"logs/{run_id}.log"
+logger = create_logger(logfile)
+
 os.makedirs(models_path, exist_ok=True)
 
 epochs = 100
-max_lr = 0.005
+max_lr = 0.001
 batch_size = 64
 num_worker = 16
 save_model_every = 5
-
-
-# transforms = transforms.Compose([transforms.Resize((100,100)),
-#                                  transforms.ToTensor()])
+early_stopping = 10
 
 resnet = models.resnet18(pretrained=True)
 num_ftrs = resnet.fc.in_features
@@ -82,7 +83,7 @@ resnet.classifier = nn.Sequential(
 # )
 
 transforms = transforms.Compose([
-    transforms.Resize((224, 224)),
+    # transforms.Resize((224, 224)),
     # transforms.RandomHorizontalFlip(),
     # transforms.RandomRotation(20),
     # transforms.RandomCrop((110, 110)),
@@ -228,14 +229,22 @@ def train(epochs, max_lr, model, train_dl, test_dl, opt_func=torch.optim.Adam):
             accuracy = torch.mean(correct_predictions).item() * 100
             accuracys.append(accuracy)
 
+
+
         losses_test = np.array(losses_test)
         avr_loss_test.append(math.log(losses_test.mean()/len(test_dl)))
 
         arg_accuracy = sum(accuracys) / len(accuracys)
         accuracy_test.append(arg_accuracy)
+
+
+
         logger.info(
             f"\tAvarage loss test: {losses_test.mean()/len(test_dl):.4f}\t Accuracy: {arg_accuracy:.2f}\n")
-
+        if arg_accuracy == max(accuracy_test):
+            print("Saved new best model")
+            filename = os.path.join(models_path, f"best_model.pt")
+            torch.save(model.state_dict(), filename)
     return model
 
 
@@ -258,6 +267,5 @@ train_dl = DataLoader(train_ds, shuffle=True, num_workers=num_worker,
 test_ds = SiameseData(test_csv, test_dir, transform=transforms)
 test_dl = DataLoader(test_ds, shuffle=True, num_workers=num_worker,
                      pin_memory=True, batch_size=batch_size)
-model
 os.environ['WANDB_CONSOLE'] = 'off'
 history = train(epochs, max_lr, model, train_dl, test_dl, opt_func)
