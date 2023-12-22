@@ -41,7 +41,7 @@ from src.logger import create_logger
 torch.cuda.is_available()
 
 
-run_id = 3
+run_id = 4
 train_dir = "data/train"
 test_dir = "data/test"
 
@@ -58,7 +58,7 @@ epochs = 100
 max_lr = 0.001
 batch_size = 64
 num_worker = 16
-save_model_every = 5
+save_model_every = 10
 early_stopping = 10
 
 resnet = models.resnet18(pretrained=True)
@@ -84,8 +84,8 @@ resnet.classifier = nn.Sequential(
 
 transforms = transforms.Compose([
     # transforms.Resize((224, 224)),
-    # transforms.RandomHorizontalFlip(),
-    # transforms.RandomRotation(20),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(20),
     # transforms.RandomCrop((110, 110)),
     # transforms.ColorJitter(brightness=0.5, contrast=0.1,
     #                        saturation=0.1, hue=0.1),
@@ -240,9 +240,9 @@ def train(epochs, max_lr, model, train_dl, test_dl, opt_func=torch.optim.Adam):
 
 
         logger.info(
-            f"\tAvarage loss test: {losses_test.mean()/len(test_dl):.4f}\t Accuracy: {arg_accuracy:.2f}\n")
+            f"\tAvarage loss test: {losses_test.mean()/len(test_dl):.4f}\t Accuracy: {arg_accuracy:.2f}")
         if arg_accuracy == max(accuracy_test):
-            print("Saved new best model")
+            print("Saved new best model\n")
             filename = os.path.join(models_path, f"best_model.pt")
             torch.save(model.state_dict(), filename)
     return model
