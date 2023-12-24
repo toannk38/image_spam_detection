@@ -41,7 +41,7 @@ from src.logger import create_logger
 torch.cuda.is_available()
 
 
-run_id = 4
+run_id = 'vgg19_2'
 train_dir = "data/train"
 test_dir = "data/test"
 
@@ -53,7 +53,6 @@ logfile = f"logs/{run_id}.log"
 logger = create_logger(logfile)
 
 os.makedirs(models_path, exist_ok=True)
-os.makedirs("logs", exist_ok=True)
 
 epochs = 100
 max_lr = 0.001
@@ -62,22 +61,23 @@ num_worker = 16
 save_model_every = 10
 early_stopping = 10
 
-resnet = models.resnet18(pretrained=True)
-num_ftrs = resnet.fc.in_features
 
-resnet.fc1 = nn.Sequential(
-    nn.Linear(num_ftrs, 256)
-)
+vgg19 = models.vgg19(weights="IMAGENET1K_V1")
+# num_ftrs = vgg19.classifier.in_features
 
-resnet.classifier = nn.Sequential(
-    resnet.fc1,
-)
+for layer in vgg19.features.named_parameters():
+    layer[1].requires_grad = False
 
 transforms = transforms.Compose([
+    # transforms.Resize((224, 224)),
     transforms.RandomHorizontalFlip(),
     transforms.RandomRotation(20),
+    # transforms.RandomCrop((110, 110)),
+    # transforms.ColorJitter(brightness=0.5, contrast=0.1,
+    #                        saturation=0.1, hue=0.1),
     transforms.ToTensor()
 ])
+# preprocessing and loading the dataset
 
 
 class SiameseData(Dataset):
@@ -125,12 +125,24 @@ class ContrastiveLoss(nn.Module):
 class SiameseNetwork(nn.Module):
     def __init__(self):
         super(SiameseNetwork, self).__init__()
-
-        self.cnn = resnet
-
+        self.cnn = vgg19
+        self.out = nn.Sequential(
+            nn.Dropout(p=0.2),
+            nn.Linear(1000, 256),
+        )
+    def forward_once(self, inp):
+        out = self.cnn(inp)
+        out = self.out(out)
+        return out
+    
     def forward(self, input1, input2):
-        output1 = self.cnn(input1)
-        output2 = self.cnn(input2)
+        # forward pass of input 1
+        output1 = self.forward_once(input1)
+
+        # forward pass of input 2
+        output2 = self.forward_once(input2)
+
+
         output1 = output1.view(output1.size()[0], -1)
         output2 = output2.view(output2.size()[0], -1)
         return output1, output2
@@ -140,6 +152,7 @@ avr_loss_train = []
 avr_loss_test = []
 accuracy_test = []
 accuracy_train = []
+# iteration_number = 0
 
 
 def calculate_accuracy(output1, output2, label):
@@ -149,11 +162,13 @@ def calculate_accuracy(output1, output2, label):
     correct_predictions = (predictions != label).float()
     accuracy = torch.mean(correct_predictions).item() * 100
     return accuracy
+# train the model
+
 
 def train(epochs, max_lr, model, train_dl, test_dl, opt_func=torch.optim.Adam):
     global loss, avr_loss
     torch.cuda.empty_cache()
-    optimizer = opt_func(resnet.parameters(), max_lr, weight_decay=0.0001)
+    optimizer = opt_func(model.cnn.parameters(), max_lr, weight_decay=0.0001)
     train_accuracies = []
     sched = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr, epochs=epochs,
                                                 steps_per_epoch=len(train_dl))
@@ -163,8 +178,8 @@ def train(epochs, max_lr, model, train_dl, test_dl, opt_func=torch.optim.Adam):
         losses_test = []
         accuracys = []
         accuracys1 = []
-
-        for i, data in enumerate(train_dl, 0):
+        
+        for i, data in tqdm(enumerate(train_dl, 0),total=len(train_dl)):
 
             img0, img1, label = data
             img0, img1, label = img0.cuda(), img1.cuda(), label.cuda()
@@ -219,7 +234,7 @@ def train(epochs, max_lr, model, train_dl, test_dl, opt_func=torch.optim.Adam):
 
 
         logger.info(
-            f"\tAvarage loss test: {losses_test.mean()/len(test_dl):.4f}\t Accuracy: {arg_accuracy:.2f}")
+            f"\tAvarage loss test: {losses_test.mean()/len(test_dl):.4f}\t Accuracy: {arg_accuracy:.2f} , Best Acc {max(accuracy_test):.2f}")
         if arg_accuracy == max(accuracy_test):
             print("Saved new best model\n")
             filename = os.path.join(models_path, f"best_model.pt")
