@@ -219,7 +219,7 @@ def train(epochs, max_lr, model, train_dl, test_dl, opt_func=torch.optim.Adam):
 
 
         logger.info(
-            f"\tAvarage loss test: {losses_test.mean()/len(test_dl):.4f}\t Accuracy: {arg_accuracy:.2f}")
+            f"\tAvarage loss test: {losses_test.mean()/len(test_dl):.4f}\t Accuracy: {arg_accuracy:.2f}  Best Acc {max(accuracy_test):.2f}")
         if arg_accuracy == max(accuracy_test):
             print("Saved new best model\n")
             filename = os.path.join(models_path, f"best_model.pt")
